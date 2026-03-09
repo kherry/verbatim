@@ -1,0 +1,324 @@
+{% extends "base.html" %}
+{% block title %}Identify Speakers — Transcriber{% endblock %}
+
+{% block head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/wavesurfer.js/7.7.3/wavesurfer.min.js"></script>
+<style>
+  .speaker-list {
+    display: grid;
+    gap: 16px;
+    margin-bottom: 40px;
+  }
+
+  .speaker-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    transition: border-color .2s;
+  }
+  .speaker-card:focus-within { border-color: rgba(232,255,71,.35); }
+
+  .speaker-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .speaker-id-badge {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 3px 8px;
+    background: rgba(255,255,255,.06);
+    border-radius: 2px;
+    color: var(--muted);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .name-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    font-family: var(--sans);
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text);
+    caret-color: var(--accent);
+  }
+  .name-input::placeholder { color: var(--muted); font-weight: 300; }
+
+  .speaker-body {
+    padding: 16px 20px;
+  }
+
+  /* WaveSurfer container */
+  .waveform-wrap {
+    position: relative;
+    margin-bottom: 12px;
+  }
+  .waveform {
+    height: 52px;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .waveform-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 10px;
+  }
+
+  .play-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #000;
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: opacity .15s;
+  }
+  .play-btn:hover { opacity: .82; }
+
+  .time-display {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    min-width: 70px;
+  }
+
+  .regen-btn {
+    margin-left: auto;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 4px 10px;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: border-color .15s, color .15s;
+  }
+  .regen-btn:hover { border-color: var(--muted); color: var(--text); }
+  .regen-btn:disabled { opacity: .35; cursor: not-allowed; }
+
+  /* Submit area */
+  .submit-area {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .submit-hint {
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  /* Submitting overlay */
+  #submit-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(13,13,13,.8);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 16px;
+  }
+  #submit-overlay.visible { display: flex; }
+  #submit-overlay .spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #submit-overlay p {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--muted);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>Identify Speakers</h1>
+<p class="subtitle">Listen to each clip and enter the speaker's name. Blank fields keep the auto-assigned label.</p>
+
+<div id="submit-error" class="alert alert-error" style="display:none"></div>
+
+<form id="speakers-form">
+  <div class="speaker-list">
+    {% for speaker in speakers %}
+    <div class="speaker-card" data-speaker-id="{{ speaker.speaker_id }}">
+      <div class="speaker-header">
+        <span class="speaker-id-badge">{{ speaker.speaker_id }}</span>
+        <input
+          class="name-input"
+          type="text"
+          name="speaker_{{ speaker.speaker_id }}"
+          placeholder="Enter name…"
+          autocomplete="off"
+          spellcheck="false"
+        >
+      </div>
+      <div class="speaker-body">
+        <div class="waveform-wrap">
+          <div class="waveform" id="waveform-{{ speaker.speaker_id }}"></div>
+        </div>
+        <div class="waveform-controls">
+          <button type="button" class="play-btn" id="play-{{ speaker.speaker_id }}" title="Play/Pause">▶</button>
+          <div class="time-display" id="time-{{ speaker.speaker_id }}">0:00</div>
+          <button type="button" class="regen-btn" id="regen-{{ speaker.speaker_id }}" title="Try a different clip">↻ Different clip</button>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="submit-area">
+    <button type="submit" class="btn btn-primary" id="submit-btn">Confirm &amp; Render →</button>
+    <span class="submit-hint">Processing takes a few minutes.</span>
+  </div>
+</form>
+
+<div id="submit-overlay">
+  <div class="spinner"></div>
+  <p>Starting render…</p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const JOB_ID = "{{ job.job_id }}";
+
+// ── WaveSurfer instances ────────────────────────────────────────────────────
+const wavesurfers = {};
+
+document.querySelectorAll('.speaker-card').forEach(card => {
+  const speakerId = card.dataset.speakerId;
+  const container = document.getElementById(`waveform-${speakerId}`);
+  const playBtn   = document.getElementById(`play-${speakerId}`);
+  const timeEl    = document.getElementById(`time-${speakerId}`);
+  const regenBtn  = document.getElementById(`regen-${speakerId}`);
+
+  const ws = WaveSurfer.create({
+    container,
+    waveColor:     '#3a3a3a',
+    progressColor: '#e8ff47',
+    cursorColor:   'transparent',
+    barWidth:      2,
+    barGap:        1,
+    barRadius:     2,
+    height:        52,
+    normalize:     true,
+    url:           `/job/${JOB_ID}/speaker/${speakerId}/clip`,
+  });
+
+  wavesurfers[speakerId] = ws;
+
+  ws.on('ready', () => {
+    timeEl.textContent = formatTime(ws.getDuration());
+    playBtn.disabled = false;
+  });
+
+  ws.on('audioprocess', () => {
+    timeEl.textContent = formatTime(ws.getCurrentTime()) + ' / ' + formatTime(ws.getDuration());
+  });
+
+  ws.on('finish', () => {
+    playBtn.textContent = '▶';
+  });
+
+  ws.on('error', (err) => {
+    container.innerHTML = '<p style="font-size:12px;color:var(--muted);padding:16px 0;">Clip unavailable</p>';
+    playBtn.disabled = true;
+  });
+
+  playBtn.addEventListener('click', () => {
+    // Pause all other players first
+    Object.entries(wavesurfers).forEach(([id, w]) => {
+      if (id !== speakerId && w.isPlaying()) {
+        w.pause();
+        document.getElementById(`play-${id}`).textContent = '▶';
+      }
+    });
+    ws.playPause();
+    playBtn.textContent = ws.isPlaying() ? '⏸' : '▶';
+  });
+
+  regenBtn.addEventListener('click', async () => {
+    regenBtn.disabled = true;
+    regenBtn.textContent = '↻ Loading…';
+    try {
+      const res = await fetch(`/job/${JOB_ID}/speaker/${speakerId}/regenerate`, { method: 'POST' });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      // Reload the waveform with a cache-buster
+      ws.load(data.clip_url + '?t=' + Date.now());
+      playBtn.textContent = '▶';
+    } catch (e) {
+      alert('Could not regenerate clip: ' + e.message);
+    } finally {
+      regenBtn.disabled = false;
+      regenBtn.textContent = '↻ Different clip';
+    }
+  });
+});
+
+// ── Form submit ──────────────────────────────────────────────────────────────
+document.getElementById('speakers-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const submitBtn = document.getElementById('submit-btn');
+  submitBtn.disabled = true;
+  document.getElementById('submit-error').style.display = 'none';
+  document.getElementById('submit-overlay').classList.add('visible');
+
+  // Build name map from inputs
+  const speakers = {};
+  document.querySelectorAll('.speaker-card').forEach(card => {
+    const sid = card.dataset.speakerId;
+    const input = card.querySelector('.name-input');
+    speakers[sid] = input.value.trim();
+  });
+
+  try {
+    const res = await fetch(`/job/${JOB_ID}/speakers`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ speakers }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Submit failed');
+    window.location.href = data.redirect;
+  } catch (e) {
+    document.getElementById('submit-overlay').classList.remove('visible');
+    const err = document.getElementById('submit-error');
+    err.style.display = 'block';
+    err.textContent = e.message;
+    submitBtn.disabled = false;
+  }
+});
+
+function formatTime(s) {
+  if (!isFinite(s)) return '0:00';
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60).toString().padStart(2, '0');
+  return `${m}:${sec}`;
+}
+</script>
+{% endblock %}

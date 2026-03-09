@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}Upload — Transcriber{% endblock %}
+
+{% block head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dropzone/5.9.3/dropzone.min.js"></script>
+<style>
+  .upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 64px 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .2s, background .2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .upload-zone:hover,
+  .upload-zone.dz-drag-hover {
+    border-color: var(--accent);
+    background: rgba(232,255,71,.03);
+  }
+  .upload-zone .icon {
+    font-size: 40px;
+    margin-bottom: 16px;
+    opacity: .5;
+  }
+  .upload-zone h2 {
+    font-family: var(--mono);
+    font-size: 16px;
+    font-weight: 500;
+    margin-bottom: 8px;
+  }
+  .upload-zone p {
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .upload-zone .formats {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 20px;
+  }
+  .format-tag {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--muted);
+  }
+
+  /* Progress */
+  #progress-wrap {
+    display: none;
+    margin-top: 32px;
+  }
+  .progress-bar-track {
+    background: var(--border);
+    border-radius: 2px;
+    height: 4px;
+    overflow: hidden;
+    margin-bottom: 12px;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    background: var(--accent);
+    width: 0%;
+    transition: width .3s;
+  }
+  #progress-label {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  /* Error state */
+  #upload-error {
+    display: none;
+    margin-top: 20px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>Upload Audio</h1>
+<p class="subtitle">Upload an audio or video file to transcribe and identify speakers.</p>
+
+<div id="upload-error" class="alert alert-error"></div>
+
+<form id="dropzone-form" class="upload-zone dropzone" action="/upload">
+  <div class="icon">⬆</div>
+  <h2>Drop your file here</h2>
+  <p>or click to browse</p>
+  <div class="formats">
+    <span class="format-tag">MP3</span>
+    <span class="format-tag">MP4</span>
+    <span class="format-tag">WAV</span>
+    <span class="format-tag">M4A</span>
+    <span class="format-tag">FLAC</span>
+    <span class="format-tag">OGG</span>
+    <span class="format-tag">WEBM</span>
+  </div>
+  <!-- Dropzone injects its own preview elements; we hide the default ones -->
+  <div class="dz-message" style="display:none"></div>
+</form>
+
+<div id="progress-wrap">
+  <div class="label">Uploading</div>
+  <div class="progress-bar-track">
+    <div class="progress-bar-fill" id="progress-bar"></div>
+  </div>
+  <div id="progress-label">0%</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+Dropzone.autoDiscover = false;
+
+const MAX_FILE_SIZE_MB = {{ max_upload_mb }};
+const CHUNK_SIZE = 50 * 1024 * 1024; // 50MB chunks
+
+const dz = new Dropzone('#dropzone-form', {
+  url: '/upload',
+  maxFiles: 1,
+  maxFilesize: MAX_FILE_SIZE_MB,
+  chunking: true,
+  chunkSize: CHUNK_SIZE,
+  parallelChunkUploads: false,
+  retryChunks: true,
+  retryChunksLimit: 3,
+  acceptedFiles: 'audio/*,video/*,.mp3,.mp4,.wav,.m4a,.flac,.ogg,.webm,.mkv',
+  previewsContainer: false,
+  clickable: true,
+
+  init() {
+    this.on('addedfile', () => {
+      document.getElementById('progress-wrap').style.display = 'block';
+      document.getElementById('upload-error').style.display = 'none';
+    });
+
+    this.on('uploadprogress', (file, progress) => {
+      document.getElementById('progress-bar').style.width = progress + '%';
+      document.getElementById('progress-label').textContent =
+        Math.round(progress) + '% — ' + formatBytes(file.upload.bytesSent) +
+        ' / ' + formatBytes(file.size);
+    });
+
+    this.on('success', (file, response) => {
+      if (response.redirect) {
+        window.location.href = response.redirect;
+      }
+    });
+
+    this.on('error', (file, message) => {
+      const errEl = document.getElementById('upload-error');
+      errEl.style.display = 'block';
+      errEl.textContent = typeof message === 'string'
+        ? message
+        : (message.error || 'Upload failed. Please try again.');
+      document.getElementById('progress-wrap').style.display = 'none';
+      dz.removeAllFiles();
+    });
+  }
+});
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+</script>
+{% endblock %}

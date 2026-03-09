@@ -1,0 +1,31 @@
+version: "3.9"
+
+services:
+  transcriber:
+    build: .
+    image: transcriber:latest
+    container_name: transcriber
+
+    # ── GPU access ──────────────────────────────────────────────────────────
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    # ── Ports ───────────────────────────────────────────────────────────────
+    ports:
+      - "80:80"
+
+    # ── Persistent storage ──────────────────────────────────────────────────
+    # Job data survives container restarts.
+    volumes:
+      - ./storage:/app/storage
+
+    # ── Environment ─────────────────────────────────────────────────────────
+    env_file:
+      - .env
+
+    restart: unless-stopped

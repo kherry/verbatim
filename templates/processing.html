@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}Processing — Transcriber{% endblock %}
+
+{% block head %}
+<style>
+  .status-grid {
+    display: grid;
+    gap: 12px;
+    margin-bottom: 32px;
+  }
+  .status-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    transition: border-color .3s;
+  }
+  .status-row.active  { border-color: rgba(232,255,71,.3); }
+  .status-row.done    { border-color: rgba(71,255,232,.2); }
+  .status-row.error   { border-color: rgba(255,71,71,.3); }
+
+  .status-row .step-name {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  /* Spinner */
+  .spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Checkmark / X icons */
+  .icon-done  { color: var(--accent2); font-size: 16px; }
+  .icon-error { color: var(--danger);  font-size: 16px; }
+  .icon-wait  { color: var(--muted);   font-size: 16px; opacity: .4; }
+
+  /* Error detail */
+  .error-detail {
+    margin-top: 24px;
+    padding: 16px;
+    background: rgba(255,71,71,.07);
+    border: 1px solid rgba(255,71,71,.25);
+    border-radius: var(--radius);
+    font-family: var(--mono);
+    font-size: 12px;
+    color: #ff9090;
+    white-space: pre-wrap;
+    overflow-x: auto;
+  }
+
+  .job-meta {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 32px;
+  }
+  .job-meta span { color: var(--text); }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>Processing</h1>
+
+<div class="job-meta">
+  Job <span>{{ job.job_id[:8] }}…</span> &nbsp;·&nbsp; <span>{{ job.original_filename }}</span>
+</div>
+
+{% if error %}
+  <div class="alert alert-error">{{ error }}</div>
+{% endif %}
+
+<div class="status-grid" id="status-grid">
+  <div class="status-row {% if job.status.value in ['TRANSCRIBING'] %}active{% elif job.status.value in ['AWAITING_NAMES','RENDERING','DONE'] %}done{% elif job.status.value == 'FAILED' %}error{% endif %}" id="row-upload">
+    <div class="step-name">Upload</div>
+    {% if job.status.value == 'UPLOADING' %}
+      <div class="spinner"></div>
+    {% elif job.status.value == 'FAILED' and not job.transcript_srt_path %}
+      <span class="icon-error">✕</span>
+    {% else %}
+      <span class="icon-done">✓</span>
+    {% endif %}
+  </div>
+
+  <div class="status-row {% if job.status.value == 'TRANSCRIBING' %}active{% elif job.status.value in ['AWAITING_NAMES','RENDERING','DONE'] %}done{% elif job.status.value == 'FAILED' %}error{% endif %}" id="row-transcribe">
+    <div class="step-name">Transcription</div>
+    {% if job.status.value == 'TRANSCRIBING' %}
+      <div class="spinner"></div>
+    {% elif job.status.value in ['AWAITING_NAMES','RENDERING','DONE'] %}
+      <span class="icon-done">✓</span>
+    {% elif job.status.value == 'FAILED' %}
+      <span class="icon-error">✕</span>
+    {% else %}
+      <span class="icon-wait">○</span>
+    {% endif %}
+  </div>
+
+  <div class="status-row {% if job.status.value == 'RENDERING' %}active{% elif job.status.value == 'DONE' %}done{% elif job.status.value == 'FAILED' %}error{% endif %}" id="row-render">
+    <div class="step-name">Render</div>
+    {% if job.status.value == 'RENDERING' %}
+      <div class="spinner"></div>
+    {% elif job.status.value == 'DONE' %}
+      <span class="icon-done">✓</span>
+    {% elif job.status.value == 'FAILED' %}
+      <span class="icon-error">✕</span>
+    {% else %}
+      <span class="icon-wait">○</span>
+    {% endif %}
+  </div>
+</div>
+
+{% if job.status.value == 'FAILED' and job.error %}
+<div class="label">Error detail</div>
+<div class="error-detail">{{ job.error }}</div>
+{% endif %}
+
+{% if job.status.value not in ['FAILED', 'DONE', 'AWAITING_NAMES'] %}
+<p style="font-size:13px; color:var(--muted);">This page will update automatically. You can close this tab and return to this URL later.</p>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const JOB_ID = "{{ job.job_id }}";
+const CURRENT_STATUS = "{{ job.status.value }}";
+
+// Don't poll if we're already in a terminal/redirect state
+const POLL_STATES = ['UPLOADING', 'TRANSCRIBING', 'RENDERING'];
+
+if (POLL_STATES.includes(CURRENT_STATUS)) {
+  startPolling();
+}
+
+function startPolling() {
+  const interval = setInterval(async () => {
+    try {
+      const res = await fetch(`/job/${JOB_ID}/status`);
+      const data = await res.json();
+
+      if (data.redirect) {
+        clearInterval(interval);
+        window.location.href = data.redirect;
+        return;
+      }
+
+      if (data.status === 'FAILED') {
+        clearInterval(interval);
+        // Reload to show error state rendered by server
+        window.location.reload();
+      }
+    } catch (e) {
+      // Network error — keep polling
+    }
+  }, 3000);
+}
+</script>
+{% endblock %}

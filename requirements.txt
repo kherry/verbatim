@@ -1,0 +1,9 @@
+# Web framework
+flask>=3.0,<4.0
+gunicorn>=21.0,<22.0
+
+# Environment variable loading
+python-dotenv>=1.0,<2.0
+
+# Whisper dependency
+whisperx

@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% block title %}Download — Transcriber{% endblock %}
+
+{% block head %}
+<style>
+  .done-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent2);
+    margin-bottom: 32px;
+  }
+  .done-badge::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent2);
+    box-shadow: 0 0 8px var(--accent2);
+    flex-shrink: 0;
+  }
+
+  /* ── Video player ─────────────────────────────────────────────────────── */
+  .video-wrap {
+    position: relative;
+    width: 100%;
+    background: #000;
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 1px solid var(--border);
+    margin-bottom: 24px;
+  }
+
+  .video-wrap video {
+    display: block;
+    width: 100%;
+    max-height: 480px;
+    background: #000;
+  }
+
+  /* ── File / action row ────────────────────────────────────────────────── */
+  .file-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin-bottom: 32px;
+  }
+
+  .file-info .file-name {
+    font-family: var(--mono);
+    font-size: 15px;
+    font-weight: 500;
+    margin-bottom: 4px;
+  }
+
+  .file-info .file-meta {
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 32px 0;
+  }
+
+  .back-section {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .back-hint {
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  /* ── Confirm modal ────────────────────────────────────────────────────── */
+  #back-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(13,13,13,.85);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  #back-modal.visible { display: flex; }
+  .modal-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 32px;
+    max-width: 420px;
+    width: 90%;
+  }
+  .modal-card h3 {
+    font-family: var(--mono);
+    font-size: 15px;
+    margin-bottom: 12px;
+  }
+  .modal-card p {
+    font-size: 14px;
+    color: var(--muted);
+    margin-bottom: 24px;
+    line-height: 1.6;
+  }
+  .modal-actions {
+    display: flex;
+    gap: 12px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="done-badge">Complete</div>
+
+<h1>Your file is ready</h1>
+<p class="subtitle">Watch the subtitled video below, or download it.</p>
+
+<!-- ── Embedded video player ──────────────────────────────────────────────── -->
+<div class="video-wrap">
+  <video
+    controls
+    preload="metadata"
+    src="/job/{{ job.job_id }}/file"
+  >
+    Your browser does not support the video tag.
+    <a href="/job/{{ job.job_id }}/file">Download the video instead.</a>
+  </video>
+</div>
+
+<!-- ── Filename + download button ────────────────────────────────────────── -->
+<div class="file-card">
+  <div class="file-info">
+    <div class="file-name">{{ job.original_filename | replace('.', '_subtitled.', 1) }}</div>
+    <div class="file-meta">MP4 · Subtitled &amp; speaker-labelled</div>
+  </div>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="/job/{{ job.job_id }}/file" class="btn btn-primary" download>Download MP4</a>
+    <a href="/job/{{ job.job_id }}/transcript" class="btn btn-secondary" download>Download Transcript</a>
+  </div>
+</div>
+
+<hr class="divider">
+
+<div class="back-section">
+  <button class="btn btn-secondary" id="back-btn">← Edit Speaker Names</button>
+  <span class="back-hint">This will delete the current video and let you re-render with updated names.</span>
+</div>
+
+<!-- ── Confirm modal ──────────────────────────────────────────────────────── -->
+<div id="back-modal">
+  <div class="modal-card">
+    <h3>Go back and re-render?</h3>
+    <p>The current MP4 will be deleted. You'll return to the speaker naming screen and can re-render with updated names.</p>
+    <div class="modal-actions">
+      <button class="btn btn-danger" id="confirm-back-btn">Yes, delete &amp; go back</button>
+      <button class="btn btn-secondary" id="cancel-back-btn">Cancel</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const JOB_ID = "{{ job.job_id }}";
+
+document.getElementById('back-btn').addEventListener('click', () => {
+  document.getElementById('back-modal').classList.add('visible');
+});
+
+document.getElementById('cancel-back-btn').addEventListener('click', () => {
+  document.getElementById('back-modal').classList.remove('visible');
+});
+
+document.getElementById('confirm-back-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('confirm-back-btn');
+  btn.disabled = true;
+  btn.textContent = 'Deleting…';
+
+  try {
+    const res = await fetch(`/job/${JOB_ID}/back`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+    window.location.href = data.redirect;
+  } catch (e) {
+    alert('Error: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = 'Yes, delete & go back';
+  }
+});
+</script>
+{% endblock %}
