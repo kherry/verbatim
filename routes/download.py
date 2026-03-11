@@ -50,7 +50,7 @@ def download_file(job_id: str):
         str(path),
         mimetype="video/mp4",
         as_attachment=False,          # allows <video> streaming
-        download_name=f"{path.stem}_subtitled.mp4",
+        download_name=f"{Path(job.original_filename).stem}_transcribed.mp4",
         conditional=True,             # supports Range requests for seeking
     )
 
